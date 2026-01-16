@@ -1,0 +1,140 @@
+# -------------------------------
+# 1. Grafana Datasource (Prometheus)
+# -------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: my-namespace
+data:
+  datasource.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus-service:9090
+        isDefault: true
+
+---
+# -------------------------------
+# 2. Grafana Dashboard Provider
+# -------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-provider
+  namespace: my-namespace
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: blueprint
+        orgId: 1
+        folder: "Blueprint Dashboards"
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards
+
+---
+# -------------------------------
+# 3. Sample Blueprint Dashboard
+# -------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-blueprint-dashboard
+  namespace: my-namespace
+data:
+  cluster-overview.json: |
+    {
+      "id": null,
+      "uid": "blueprint-dashboard",
+      "title": "Cluster Blueprint Dashboard",
+      "schemaVersion": 36,
+      "version": 1,
+      "refresh": "10s",
+      "panels": [
+        {
+          "type": "stat",
+          "title": "Up Targets",
+          "datasource": "Prometheus",
+          "targets": [
+            {
+              "expr": "up",
+              "refId": "A"
+            }
+          ],
+          "gridPos": { "x": 0, "y": 0, "w": 24, "h": 6 }
+        }
+      ]
+    }
+
+---
+# -------------------------------
+# 4. Grafana Deployment (Blueprint enabled)
+# -------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana-deployment
+  namespace: my-namespace
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      securityContext:
+        fsGroup: 472
+      containers:
+        - name: grafana
+          image: grafana/grafana:9.5.15
+          ports:
+            - containerPort: 3000
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              value: admin
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              value: admin
+          volumeMounts:
+            - name: datasources
+              mountPath: /etc/grafana/provisioning/datasources
+            - name: dashboard-provider
+              mountPath: /etc/grafana/provisioning/dashboards
+            - name: dashboards
+              mountPath: /var/lib/grafana/dashboards
+      volumes:
+        - name: datasources
+          configMap:
+            name: grafana-datasources
+        - name: dashboard-provider
+          configMap:
+            name: grafana-dashboard-provider
+        - name: dashboards
+          configMap:
+            name: grafana-blueprint-dashboard
+
+---
+# -------------------------------
+# 5. Grafana Service (NodePort)
+# -------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana-service
+  namespace: my-namespace
+spec:
+  type: NodePort
+  selector:
+    app: grafana
+  ports:
+    - port: 3000
+      targetPort: 3000
+      nodePort: 32000
