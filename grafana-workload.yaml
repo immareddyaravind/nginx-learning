@@ -13,9 +13,11 @@ spec:
       labels:
         app: grafana
     spec:
+      securityContext:
+        fsGroup: 472
       containers:
         - name: grafana
-          image: grafana/grafana:latest
+          image: grafana/grafana:9.5.15
           ports:
             - containerPort: 3000
           env:
